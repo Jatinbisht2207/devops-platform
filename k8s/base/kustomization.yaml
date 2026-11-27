@@ -3,11 +3,9 @@ kind: Kustomization
 resources:
   - services.yaml
   - rollout.yaml
-  - analysis-template.yaml
   - ingress.yaml
   - hpa-pdb.yaml
   - networkpolicy.yaml
-  - monitoring/monitoring.yaml
 configMapGenerator:
   - name: orders-api-dashboard
     files: [monitoring/dashboards/orders-api.json]

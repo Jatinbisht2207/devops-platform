@@ -30,3 +30,7 @@ patches:
       - {op: replace, path: /spec/rules/0/host, value: orders.localtest.me}
       - {op: remove, path: /spec/tls}
       - {op: remove, path: "/metadata/annotations/cert-manager.io~1cluster-issuer"}
+
+  - target: {kind: Rollout, name: orders-api}
+    patch: |-
+      - {op: remove, path: /spec/strategy/canary/analysis}

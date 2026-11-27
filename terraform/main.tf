@@ -68,7 +68,7 @@ module "eks" {
 
 module "ebs_csi_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.48"
+  version = "~> 6.11"
 
   role_name             = "${var.name}-ebs-csi"
   attach_ebs_csi_policy = true
@@ -142,7 +142,7 @@ resource "aws_iam_policy" "velero" {
 
 module "velero_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.48"
+  version = "~> 6.11"
 
   role_name = "${var.name}-velero"
   role_policy_arns = { velero = aws_iam_policy.velero.arn }

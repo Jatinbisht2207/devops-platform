@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: meta
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/orders-api" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build (local load, not pushed yet)
         uses: docker/build-push-action@v6
         with:

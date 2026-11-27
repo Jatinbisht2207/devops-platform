@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: shop-staging
+resources: [../../base, namespace.yaml]
+images:
+  - name: ghcr.io/OWNER/orders-api
+    newName: ghcr.io/OWNER/orders-api
+    newTag: bootstrap          # replaced by CI with @sha256 digest
+patches:
+  - target: {kind: Rollout, name: orders-api}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 2}
+      - {op: add, path: /spec/strategy/canary/analysis/args/-, value: {name: namespace, value: shop-staging}}
+      - op: replace
+        path: /spec/strategy/canary/steps
+        value:
+          - {setWeight: 25}
+          - {pause: {duration: 1m}}
+          - {setWeight: 50}
+          - {pause: {duration: 1m}}
+          - {setWeight: 100}
+  - target: {kind: HorizontalPodAutoscaler, name: orders-api}
+    patch: |-
+      - {op: replace, path: /spec/minReplicas, value: 2}
+  - target: {kind: PodDisruptionBudget, name: orders-api}
+    patch: |-
+      - {op: replace, path: /spec/minAvailable, value: 1}
+  - target: {kind: Ingress, name: orders-api}
+    patch: |-
+      - {op: replace, path: /spec/rules/0/host, value: orders.staging.example.com}
+      - {op: replace, path: /spec/tls/0/hosts/0, value: orders.staging.example.com}

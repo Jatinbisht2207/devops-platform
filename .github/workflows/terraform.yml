@@ -1,0 +1,43 @@
+name: terraform
+on:
+  pull_request: {paths: ['terraform/**']}
+  push: {branches: [main], paths: ['terraform/**']}
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+env:
+  TF_IN_AUTOMATION: 'true'
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: {terraform_version: 1.9.8}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: {role-to-assume: '${{ secrets.AWS_TERRAFORM_ROLE_ARN }}', aws-region: '${{ vars.AWS_REGION }}'}
+      - run: terraform -chdir=terraform fmt -check -recursive
+      - run: terraform -chdir=terraform init -input=false
+      - run: terraform -chdir=terraform validate
+      - name: IaC security scan
+        uses: bridgecrewio/checkov-action@v12
+        with: {directory: terraform, framework: terraform, soft_fail: false, quiet: true}
+      - run: terraform -chdir=terraform plan -input=false -var-file=envs/prod.tfvars -out=tfplan
+      - uses: actions/upload-artifact@v4
+        with: {name: tfplan, path: terraform/tfplan}
+  apply:
+    if: github.ref == 'refs/heads/main'
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: infra-prod         # manual approval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: {terraform_version: 1.9.8}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: {role-to-assume: '${{ secrets.AWS_TERRAFORM_ROLE_ARN }}', aws-region: '${{ vars.AWS_REGION }}'}
+      - uses: actions/download-artifact@v4
+        with: {name: tfplan, path: terraform}
+      - run: terraform -chdir=terraform init -input=false
+      - run: terraform -chdir=terraform apply -input=false tfplan

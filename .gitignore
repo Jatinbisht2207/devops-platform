@@ -1,0 +1,21 @@
+__pycache__/
+.pytest_cache/
+.coverage
+.terraform/
+*.tfstate*
+*.tfplan
+.env
+
+# Python virtual environments
+.venv/
+venv/
+
+# Python bytecode
+*.pyc
+
+# Local OS files
+.DS_Store
+Thumbs.db
+
+# Local logs
+*.log

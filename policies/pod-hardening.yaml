@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: {name: pod-hardening}
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-root-no-privilege
+      match: {any: [{resources: {kinds: [Pod], namespaces: ["shop-*"]}}]}
+      validate:
+        message: "Containers must run as non-root, without privilege escalation, with a read-only root FS."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+    - name: require-resources
+      match: {any: [{resources: {kinds: [Pod], namespaces: ["shop-*"]}}]}
+      validate:
+        message: "CPU/memory requests and a memory limit are required."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests: {cpu: "?*", memory: "?*"}
+                  limits: {memory: "?*"}
+    - name: trusted-registries-only
+      match: {any: [{resources: {kinds: [Pod], namespaces: ["shop-staging", "shop-prod"]}}]}
+      validate:
+        message: "Images must come from ghcr.io/OWNER."
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/OWNER/*"
+    - name: no-latest-tag
+      match: {any: [{resources: {kinds: [Pod], namespaces: ["shop-*"]}}]}
+      validate:
+        message: "Mutable :latest tags are not allowed."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"

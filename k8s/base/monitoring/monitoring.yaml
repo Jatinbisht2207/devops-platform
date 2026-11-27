@@ -1,0 +1,43 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: orders-api
+  labels: {app.kubernetes.io/name: orders-api}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: orders-api}
+  endpoints:
+    - {port: http, path: /metrics, interval: 15s}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: orders-api-alerts
+  labels: {app.kubernetes.io/name: orders-api}
+spec:
+  groups:
+    - name: orders-api.slo
+      rules:
+        - record: orders_api:error_ratio:rate5m
+          expr: sum(rate(http_requests_total{service="orders-api-stable",status=~"5.."}[5m])) / sum(rate(http_requests_total{service="orders-api-stable"}[5m]))
+        - record: orders_api:error_ratio:rate1h
+          expr: sum(rate(http_requests_total{service="orders-api-stable",status=~"5.."}[1h])) / sum(rate(http_requests_total{service="orders-api-stable"}[1h]))
+        - alert: OrdersApiSLOFastBurn      # 99.9% SLO: burning 30-day budget 14.4x too fast
+          expr: orders_api:error_ratio:rate5m > (14.4 * 0.001) and orders_api:error_ratio:rate1h > (14.4 * 0.001)
+          for: 2m
+          labels: {severity: critical}
+          annotations: {summary: "orders-api is burning its error budget fast", runbook: "docs/RUNBOOK.md#high-error-rate"}
+        - alert: OrdersApiHighLatencyP95
+          expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="orders-api-stable"}[5m]))) > 0.5
+          for: 10m
+          labels: {severity: warning}
+          annotations: {summary: "orders-api p95 latency above 500ms", runbook: "docs/RUNBOOK.md#high-latency"}
+        - alert: OrdersApiDown
+          expr: sum(up{service="orders-api-stable"}) == 0
+          for: 2m
+          labels: {severity: critical}
+          annotations: {summary: "no orders-api targets are up", runbook: "docs/RUNBOOK.md#service-down"}
+        - alert: OrdersApiCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{container="orders-api"}[15m]) > 3
+          labels: {severity: warning}
+          annotations: {summary: "orders-api container restarting repeatedly"}

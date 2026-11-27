@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "1"}
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 67.4.0
+    helm:
+      releaseName: kube-prometheus-stack
+      valuesObject:
+        prometheus:
+          prometheusSpec:
+            retention: 15d
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: [ReadWriteOnce]
+                  resources: {requests: {storage: 50Gi}}
+        alertmanager:
+          config:
+            route:
+              receiver: default
+              group_by: [alertname, namespace]
+              routes:
+                - {receiver: pager, matchers: ["severity=critical"]}
+            receivers:
+              - name: default
+              - name: pager      # wire to PagerDuty/Slack via an ExternalSecret-backed secret
+        grafana:
+          sidecar:
+            dashboards: {enabled: true, label: grafana_dashboard, searchNamespace: ALL}
+          additionalDataSources:
+            - {name: Loki, uid: loki, type: loki, access: proxy, url: "http://loki.logging.svc:3100"}
+  destination: {server: https://kubernetes.default.svc, namespace: monitoring}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

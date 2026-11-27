@@ -1,0 +1,72 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: orders-api
+  labels: {app.kubernetes.io/name: orders-api}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: {app.kubernetes.io/name: orders-api}
+  strategy:
+    canary:
+      stableService: orders-api-stable
+      canaryService: orders-api-canary
+      trafficRouting:
+        nginx: {stableIngress: orders-api}
+      maxUnavailable: 0
+      analysis:                       # background analysis: any failure => automatic abort + rollback
+        startingStep: 1
+        templates: [{templateName: orders-api-health}]
+        args: [{name: service-name, value: orders-api-canary}]
+      steps:
+        - setWeight: 10
+        - pause: {duration: 2m}
+        - setWeight: 25
+        - pause: {duration: 3m}
+        - setWeight: 50
+        - pause: {duration: 3m}
+        - setWeight: 100
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: orders-api}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: orders-api
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: orders-api}
+      containers:
+        - name: orders-api
+          image: ghcr.io/OWNER/orders-api
+          ports: [{name: http, containerPort: 8000}]
+          env:
+            - {name: ERROR_RATE, value: "0"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 256Mi}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          lifecycle:
+            preStop: {exec: {command: ["sleep", "10"]}}   # let endpoints/ingress drain before SIGTERM

@@ -1,0 +1,144 @@
+name: ci-cd
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['app/**']
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12', cache: pip, cache-dependency-path: app/requirements-dev.txt}
+      - run: pip install -r app/requirements-dev.txt
+      - name: Lint
+        working-directory: app
+        run: ruff check . && ruff format --check .
+      - name: SAST (bandit)
+        working-directory: app
+        run: bandit -q -r main.py
+      - name: Unit tests + coverage gate
+        working-directory: app
+        run: pytest --cov=main --cov-fail-under=80
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: gitleaks/gitleaks-action@v2
+        env: {GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'}
+
+  build-scan-sign:
+    needs: [test, secrets-scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write          # keyless cosign signing
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/orders-api" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (local load, not pushed yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          load: true
+          tags: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          build-args: APP_VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Vulnerability scan (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Login to GHCR
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}'}
+      - name: Push
+        id: push
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          build-args: APP_VERSION=${{ github.sha }}
+          provenance: mode=max
+          cache-from: type=gha
+      - uses: sigstore/cosign-installer@v3
+        if: github.ref == 'refs/heads/main'
+      - name: Sign image (keyless, by digest)
+        if: github.ref == 'refs/heads/main'
+        run: cosign sign --yes "${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}"
+      - name: Generate SBOM
+        if: github.ref == 'refs/heads/main'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: true
+      - name: Attest SBOM
+        if: github.ref == 'refs/heads/main'
+        run: cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}"
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/main'
+    needs: build-scan-sign
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: imranismail/setup-kustomize@v2
+      - name: Pin staging to the signed digest (GitOps commit)
+        run: |
+          cd k8s/overlays/staging
+          kustomize edit set image "ghcr.io/OWNER/orders-api=${{ needs.build-scan-sign.outputs.image }}@${{ needs.build-scan-sign.outputs.digest }}"
+          git config user.name  "delivery-bot"
+          git config user.email "delivery-bot@users.noreply.github.com"
+          git commit -am "deploy(staging): ${GITHUB_SHA::8}"
+          git pull --rebase && git push
+
+  verify-staging:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for Argo CD/Rollouts, then smoke test
+        run: ./scripts/smoke-test.sh "${{ vars.STAGING_URL }}" "${{ github.sha }}" 900
+
+  promote-production:
+    needs: [verify-staging, build-scan-sign]
+    runs-on: ubuntu-latest
+    environment: production        # required reviewers = manual approval gate
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: imranismail/setup-kustomize@v2
+      - name: Pin production to the same digest
+        run: |
+          cd k8s/overlays/prod
+          kustomize edit set image "ghcr.io/OWNER/orders-api=${{ needs.build-scan-sign.outputs.image }}@${{ needs.build-scan-sign.outputs.digest }}"
+          git config user.name  "delivery-bot"
+          git config user.email "delivery-bot@users.noreply.github.com"
+          git commit -am "deploy(prod): ${GITHUB_SHA::8}"
+          git pull --rebase && git push

@@ -1,0 +1,12 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata: {name: shop, namespace: argocd}
+spec:
+  description: Application workloads
+  sourceRepos: [https://github.com/OWNER/REPO.git]
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: "shop-*"}
+  clusterResourceWhitelist:
+    - {group: "", kind: Namespace}
+  namespaceResourceBlacklist:
+    - {group: "", kind: ResourceQuota}

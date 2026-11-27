@@ -1,0 +1,4 @@
+*                 @OWNER/platform-team
+/terraform/       @OWNER/platform-team @OWNER/security-team
+/policies/        @OWNER/security-team
+/k8s/overlays/prod/ @OWNER/platform-team

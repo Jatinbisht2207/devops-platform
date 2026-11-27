@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata: {name: orders-api, namespace: argocd}
+spec:
+  generators:
+    - list:
+        elements:
+          - {env: staging}
+          - {env: prod}
+  template:
+    metadata:
+      name: "orders-api-{{env}}"
+      annotations: {argocd.argoproj.io/sync-wave: "3"}
+    spec:
+      project: shop
+      source: {repoURL: https://github.com/OWNER/REPO.git, targetRevision: main, path: "k8s/overlays/{{env}}"}
+      destination: {server: https://kubernetes.default.svc, namespace: "shop-{{env}}"}
+      ignoreDifferences:       # HPA/Rollouts own replicas & traffic-routing weights at runtime
+        - {group: networking.k8s.io, kind: Ingress, jqPathExpressions: [".metadata.annotations"]}
+      syncPolicy:
+        automated: {prune: true, selfHeal: true}
+        syncOptions: [CreateNamespace=true]
+        retry: {limit: 5, backoff: {duration: 10s, factor: 2, maxDuration: 3m}}

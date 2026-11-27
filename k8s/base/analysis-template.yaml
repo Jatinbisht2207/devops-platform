@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: orders-api-health
+spec:
+  args:
+    - name: service-name
+    - name: namespace
+  metrics:
+    - name: success-rate
+      interval: 30s
+      failureLimit: 2
+      consecutiveErrorLimit: 5
+      successCondition: result[0] >= 0.99
+      provider:
+        prometheus:
+          address: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+          query: |
+            (sum(rate(http_requests_total{service="{{args.service-name}}",namespace="{{args.namespace}}",status!~"5.."}[2m]))
+              / sum(rate(http_requests_total{service="{{args.service-name}}",namespace="{{args.namespace}}"}[2m])))
+            or vector(1)
+    - name: p95-latency
+      interval: 30s
+      failureLimit: 2
+      consecutiveErrorLimit: 5
+      successCondition: result[0] <= 0.5
+      provider:
+        prometheus:
+          address: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+          query: |
+            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="{{args.service-name}}",namespace="{{args.namespace}}"}[2m])))
+            or vector(0)

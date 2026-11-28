@@ -5,7 +5,7 @@ resources:
 - ../../base
 - namespace.yaml
 images:
-- digest: sha256:3c4c0726d51b41a228de7dfc8ab051856ae89c90cdcd66b47ad83e1d3d9f2fa7
+- digest: sha256:576e44e51846d34245e3d251c8e5302ea35b5b2577568bb4a23fa0012d87f27b
   name: ghcr.io/jatinbisht2207/orders-api
   newName: ghcr.io/jatinbisht2207/orders-api
 patches:

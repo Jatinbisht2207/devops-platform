@@ -130,28 +130,3 @@ jobs:
           git config user.email "delivery-bot@users.noreply.github.com"
           git commit -am "deploy(staging): ${GITHUB_SHA::8}"
           git pull --rebase && git push
-
-  verify-staging:
-    needs: deploy-staging
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Wait for Argo CD/Rollouts, then smoke test
-        run: ./scripts/smoke-test.sh "${{ vars.STAGING_URL }}" "${{ github.sha }}" 900
-
-  promote-production:
-    needs: [verify-staging, build-scan-sign]
-    runs-on: ubuntu-latest
-    environment: production        # required reviewers = manual approval gate
-    permissions: {contents: write}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: imranismail/setup-kustomize@v2
-      - name: Pin production to the same digest
-        run: |
-          cd k8s/overlays/prod
-          kustomize edit set image "ghcr.io/jatinbisht2207/orders-api=${{ needs.build-scan-sign.outputs.image }}@${{ needs.build-scan-sign.outputs.digest }}"
-          git config user.name  "delivery-bot"
-          git config user.email "delivery-bot@users.noreply.github.com"
-          git commit -am "deploy(prod): ${GITHUB_SHA::8}"
-          git pull --rebase && git push

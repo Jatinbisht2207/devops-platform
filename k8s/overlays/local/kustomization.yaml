@@ -3,7 +3,7 @@ kind: Kustomization
 namespace: shop-local
 resources: [../../base, namespace.yaml]
 images:
-  - name: ghcr.io/OWNER/orders-api
+  - name: ghcr.io/jatinbisht2207/orders-api
     newName: orders-api
     newTag: local
 patches:

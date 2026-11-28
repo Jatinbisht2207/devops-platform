@@ -68,6 +68,19 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
+
+
+      - name: Start container for smoke test
+        run: |
+          docker run -d --name orders-api-ci -p 127.0.0.1:8000:8000 "${{ steps.meta.outputs.image }}:${{ github.sha }}"
+
+      - name: Smoke test built container
+        run: ./scripts/smoke-test.sh http://127.0.0.1:8000 "${{ github.sha }}" 60
+
+      - name: Cleanup smoke-test container
+        if: always()
+        run: docker rm -f orders-api-ci || true
+
       - name: Login to GHCR
         if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
@@ -112,7 +125,7 @@ jobs:
       - name: Pin staging to the signed digest (GitOps commit)
         run: |
           cd k8s/overlays/staging
-          kustomize edit set image "ghcr.io/OWNER/orders-api=${{ needs.build-scan-sign.outputs.image }}@${{ needs.build-scan-sign.outputs.digest }}"
+          kustomize edit set image "ghcr.io/jatinbisht2207/orders-api=${{ needs.build-scan-sign.outputs.image }}@${{ needs.build-scan-sign.outputs.digest }}"
           git config user.name  "delivery-bot"
           git config user.email "delivery-bot@users.noreply.github.com"
           git commit -am "deploy(staging): ${GITHUB_SHA::8}"
@@ -137,7 +150,7 @@ jobs:
       - name: Pin production to the same digest
         run: |
           cd k8s/overlays/prod
-          kustomize edit set image "ghcr.io/OWNER/orders-api=${{ needs.build-scan-sign.outputs.image }}@${{ needs.build-scan-sign.outputs.digest }}"
+          kustomize edit set image "ghcr.io/jatinbisht2207/orders-api=${{ needs.build-scan-sign.outputs.image }}@${{ needs.build-scan-sign.outputs.digest }}"
           git config user.name  "delivery-bot"
           git config user.email "delivery-bot@users.noreply.github.com"
           git commit -am "deploy(prod): ${GITHUB_SHA::8}"

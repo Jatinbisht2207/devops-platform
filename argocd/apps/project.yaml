@@ -3,7 +3,7 @@ kind: AppProject
 metadata: {name: shop, namespace: argocd}
 spec:
   description: Application workloads
-  sourceRepos: [https://github.com/OWNER/REPO.git]
+  sourceRepos: [https://github.com/Jatinbisht2207/devops-platform.git]
   destinations:
     - {server: https://kubernetes.default.svc, namespace: "shop-*"}
   clusterResourceWhitelist:

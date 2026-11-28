@@ -6,7 +6,7 @@ metadata:
   annotations: {argocd.argoproj.io/sync-wave: "2"}
 spec:
   project: default
-  source: {repoURL: https://github.com/OWNER/REPO.git, targetRevision: main, path: policies}
+  source: {repoURL: https://github.com/Jatinbisht2207/devops-platform.git, targetRevision: main, path: policies}
   destination: {server: https://kubernetes.default.svc, namespace: kyverno}
   syncPolicy:
     automated: {prune: true, selfHeal: true}

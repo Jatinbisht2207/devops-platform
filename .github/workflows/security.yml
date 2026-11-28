@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/OWNER/orders-api:latest
+          image-ref: ghcr.io/jatinbisht2207/orders-api:latest
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy.sarif
